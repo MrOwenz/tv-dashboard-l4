@@ -390,10 +390,23 @@ function resolveLayout(){
   const dateRe = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
 
   const r1 = (pageRows[0] && pageRows[0].rows) || [];
+  const nonEmpty = r => Array.isArray(r) && r.some(v => String(v == null ? "" : v).trim() !== "");
   const s1 = r1.findIndex(r => dateRe.test(cell(r, CONFIG.page1.col.date)));
-  if (s1 >= 0) CONFIG.page1.dataStartRow = s1;
-  const t1 = r1.findIndex(r => cell(r, 0) === "รวม");
-  if (t1 >= 0){ CONFIG.page1.totalRow = t1; CONFIG.page1.percentRow = t1 + 1; }
+  if (s1 >= 0){
+    CONFIG.page1.dataStartRow = s1;
+    // ช่วงวันที่ต่อเนื่อง (1/10/2026, 2/10/2026, ...) — จบที่วันสุดท้ายของเดือน
+    let last = s1;
+    while (last + 1 < r1.length && dateRe.test(cell(r1[last + 1], CONFIG.page1.col.date))) last++;
+    // แถว "รวม" = แถวแรกที่มีข้อมูลต่อจากวันสุดท้าย (ไม่พึ่งป้ายชื่อ เพราะ Google CSV อาจทำป้ายหาย/แถวเลื่อน)
+    let t1 = -1;
+    for (let i = last + 1; i < r1.length; i++){ if (nonEmpty(r1[i])){ t1 = i; break; } }
+    if (t1 >= 0){
+      CONFIG.page1.totalRow = t1;
+      let p1 = -1;
+      for (let i = t1 + 1; i < r1.length; i++){ if (nonEmpty(r1[i])){ p1 = i; break; } }
+      CONFIG.page1.percentRow = p1 >= 0 ? p1 : t1 + 1;
+    }
+  }
 
   const r2 = (pageRows[1] && pageRows[1].rows) || [];
   const d2 = r2.findIndex(r => !isNaN(toNumber(r[0])) && cell(r, 2).includes("%"));
@@ -454,11 +467,15 @@ function renderPage1(){
   const cfg = CONFIG.page1;
   const totalRow = data.rows[cfg.totalRow];
   if (!totalRow){
-    main.innerHTML = `<div class="loading-msg">ไม่พบแถว "รวม" (แถว index ${cfg.totalRow}) — ตรวจสอบ config</div>`;
+    main.innerHTML = `<div class="loading-msg">ไม่พบแถว "รวม" (แถว index ${cfg.totalRow}) — โหลดข้อมูลได้ ${data.rows.length} แถว — ตรวจสอบ config</div>`;
     return;
   }
 
   const percentRow = data.rows[cfg.percentRow];
+  if (!percentRow){
+    main.innerHTML = `<div class="loading-msg">ไม่พบแถว % ของเสีย (แถว index ${cfg.percentRow}) — โหลดข้อมูลได้ ${data.rows.length} แถว — ตรวจสอบ config</div>`;
+    return;
+  }
 
   const yieldVal = toNumber(totalRow[cfg.col.yieldPct]);
   const platesVal = toNumber(totalRow[cfg.col.platesProduced]);
